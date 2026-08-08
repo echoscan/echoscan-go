@@ -1,5 +1,7 @@
 # `echoscan` (Go)
 
+> Official Go module: `github.com/echoscan/echoscan-go`.
+
 中文 | [English](#english)
 
 ## 中文
@@ -24,7 +26,9 @@ import echoscan "github.com/echoscan/echoscan-go"
 方法：
 
 - Lite: `GetReport(ctx, imprint)`
-- Pro: `GetReport(ctx, imprint)`, `GetHistory(ctx, imprint, query)`
+- Pro: `GetReport(ctx, imprint)`, `GetReportWithOptions(ctx, imprint, options)`, `GetHistory(ctx, imprint, query)`
+
+`ReportOptions{AccountRef: userID}` 会发送一次不自动重试的 Account Map JSON POST；原有 `GetReport` 继续使用 GET。`GetReportWithOptions` 一旦调用就要求合法的 `AccountRef`，空值不会回退到 GET。服务端细分错误码位于 `APIError.ServerCode`。
 
 
 History 查询：
@@ -94,13 +98,18 @@ if err != nil {
     panic(err)
 }
 
+accountReport, err := pro.GetReportWithOptions(ctx, "fp_session_123", echoscan.ReportOptions{AccountRef: "account_test_a"})
+if err != nil {
+    panic(err)
+}
+
 days := 7
 history, err := pro.GetHistory(ctx, "fp_session_123", echoscan.HistoryQuery{Days: &days})
 if err != nil {
     panic(err)
 }
 
-fmt.Println(report, history)
+fmt.Println(report, accountReport, history)
 ```
 
 ---
@@ -127,7 +136,9 @@ import echoscan "github.com/echoscan/echoscan-go"
 Methods:
 
 - Lite: `GetReport(ctx, imprint)`
-- Pro: `GetReport(ctx, imprint)`, `GetHistory(ctx, imprint, query)`
+- Pro: `GetReport(ctx, imprint)`, `GetReportWithOptions(ctx, imprint, options)`, `GetHistory(ctx, imprint, query)`
+
+`ReportOptions{AccountRef: userID}` sends one Account Map JSON POST with no automatic retry, while the existing `GetReport` remains GET. Once called, `GetReportWithOptions` requires a valid `AccountRef`; an empty value never falls back to GET. The stable server-specific error code is available as `APIError.ServerCode`.
 
 
 History query:
@@ -197,11 +208,16 @@ if err != nil {
     panic(err)
 }
 
+accountReport, err := pro.GetReportWithOptions(ctx, "fp_session_123", echoscan.ReportOptions{AccountRef: "account_test_a"})
+if err != nil {
+    panic(err)
+}
+
 days := 7
 history, err := pro.GetHistory(ctx, "fp_session_123", echoscan.HistoryQuery{Days: &days})
 if err != nil {
     panic(err)
 }
 
-fmt.Println(report, history)
+fmt.Println(report, accountReport, history)
 ```

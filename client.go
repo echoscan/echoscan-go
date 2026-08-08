@@ -1,6 +1,7 @@
 package echoscan
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,13 +14,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 const (
 	defaultBaseURL   = "https://api.echoscan.org"
 	defaultTimeoutMs = 5000
 	defaultRetries   = 2
-	sdkUserAgent     = "echoscan-go/0.2.2"
+	sdkUserAgent     = "echoscan-go/0.1.0"
 )
 
 type ErrorCode string
@@ -38,6 +41,7 @@ const (
 
 type APIError struct {
 	Code       ErrorCode
+	ServerCode string
 	HTTPStatus int
 	Message    string
 	RequestID  string
@@ -54,6 +58,15 @@ type HistoryQuery struct {
 	To     string
 	Recent *int
 }
+
+type ReportOptions struct {
+	AccountRef string
+}
+
+const (
+	ServerCodeAccountRefConflict          = "account_ref_conflict"
+	ServerCodeAccountMapDeviceUnavailable = "account_map_device_unavailable"
+)
 
 type runtimeConfig struct {
 	baseURL   string
@@ -147,6 +160,18 @@ func (c *ProClient) GetReport(ctx context.Context, imprint string) (map[string]a
 	return c.base.getJSON(ctx, "/api/v1/fingerprint/report/"+url.PathEscape(im))
 }
 
+func (c *ProClient) GetReportWithOptions(ctx context.Context, imprint string, options ReportOptions) (map[string]any, error) {
+	im, err := validateImprint(imprint)
+	if err != nil {
+		return nil, err
+	}
+	path := "/api/v1/fingerprint/report/" + url.PathEscape(im)
+	if err := validateAccountRef(options.AccountRef); err != nil {
+		return nil, err
+	}
+	return c.base.postJSON(ctx, path, map[string]string{"account_ref": options.AccountRef})
+}
+
 func (c *ProClient) GetHistory(ctx context.Context, imprint string, query HistoryQuery) (map[string]any, error) {
 	im, err := validateImprint(imprint)
 	if err != nil {
@@ -187,13 +212,25 @@ func newBaseClient(apiKey string) (*baseClient, error) {
 }
 
 func (c *baseClient) getJSON(ctx context.Context, path string) (map[string]any, error) {
+	return c.requestJSON(ctx, http.MethodGet, path, nil, c.retries)
+}
+
+func (c *baseClient) postJSON(ctx context.Context, path string, payload map[string]string) (map[string]any, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, wrapAPIError(ErrorUnknownError, 0, "Unexpected error", "", false)
+	}
+	return c.requestJSON(ctx, http.MethodPost, path, body, 0)
+}
+
+func (c *baseClient) requestJSON(ctx context.Context, method, path string, requestBody []byte, retries int) (map[string]any, error) {
 	u := c.baseURL + path
-	maxAttempts := c.retries + 1
+	maxAttempts := retries + 1
 	var lastErr error
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		requestID := generateRequestID()
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		req, err := http.NewRequestWithContext(ctx, method, u, bytes.NewReader(requestBody))
 		if err != nil {
 			return nil, wrapAPIError(ErrorUnknownError, 0, "Unexpected error", requestID, false)
 		}
@@ -202,6 +239,9 @@ func (c *baseClient) getJSON(ctx context.Context, path string) (map[string]any, 
 		req.Header.Set("X-Request-Id", requestID)
 		if c.apiKey != "" {
 			req.Header.Set("X-API-Key", c.apiKey)
+		}
+		if requestBody != nil {
+			req.Header.Set("Content-Type", "application/json")
 		}
 
 		resp, err := c.httpClient.Do(req)
@@ -243,6 +283,7 @@ func (c *baseClient) getJSON(ctx context.Context, path string) (map[string]any, 
 			responseRequestID = requestID
 		}
 		mapped := wrapAPIError(code, resp.StatusCode, defaultMessage(code), responseRequestID, retryable)
+		mapped.ServerCode = extractServerCode(payload)
 		if retryable {
 			lastErr = mapped
 			continue
@@ -254,6 +295,15 @@ func (c *baseClient) getJSON(ctx context.Context, path string) (map[string]any, 
 		return nil, lastErr
 	}
 	return nil, wrapAPIError(ErrorUnknownError, 0, "Unexpected error", "", false)
+}
+
+func extractServerCode(payload map[string]any) string {
+	errorPayload, ok := payload["error"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	serverCode, _ := errorPayload["code"].(string)
+	return strings.TrimSpace(serverCode)
 }
 
 func buildRuntimeConfig() runtimeConfig {
@@ -299,6 +349,18 @@ func validateImprint(imprint string) (string, error) {
 		}
 	}
 	return im, nil
+}
+
+func validateAccountRef(accountRef string) error {
+	if !utf8.ValidString(accountRef) || len(accountRef) == 0 || len(accountRef) > 256 || strings.TrimSpace(accountRef) != accountRef {
+		return wrapAPIError(ErrorInvalidRequest, http.StatusBadRequest, "Invalid request", "", false)
+	}
+	for _, value := range accountRef {
+		if unicode.IsControl(value) {
+			return wrapAPIError(ErrorInvalidRequest, http.StatusBadRequest, "Invalid request", "", false)
+		}
+	}
+	return nil
 }
 
 func buildHistoryQuery(q HistoryQuery) (string, error) {
