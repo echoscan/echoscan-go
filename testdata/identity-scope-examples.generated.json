@@ -1,1 +1,46 @@
-
+{
+  "valid": [
+    {
+      "name": "internal.json",
+      "value": "internal:synthetic-service"
+    },
+    {
+      "name": "site.json",
+      "value": "site:echoscan"
+    },
+    {
+      "name": "synthetic.json",
+      "value": "workspace:synthetic"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "empty-identifier.json",
+      "value": "workspace:"
+    },
+    {
+      "name": "invalid-leading-character.json",
+      "value": "workspace:-synthetic"
+    },
+    {
+      "name": "invalid-site.json",
+      "value": "site:partner"
+    },
+    {
+      "name": "missing.json",
+      "value": ""
+    },
+    {
+      "name": "too-long.json",
+      "value": "workspace:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "unsupported-namespace.json",
+      "value": "tenant:synthetic"
+    },
+    {
+      "name": "wrong-shape.json",
+      "value": "workspace:synthetic:extra"
+    }
+  ]
+}
