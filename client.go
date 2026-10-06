@@ -90,7 +90,8 @@ type ProClient struct {
 }
 
 type DebugClient struct {
-	base *baseClient
+	base          *baseClient
+	identityScope string
 }
 
 func NewLiteClient(apiKey string) (*LiteClient, error) {
@@ -127,21 +128,31 @@ func NewProClient(apiKey string) (*ProClient, error) {
 	return &ProClient{base: base}, nil
 }
 
+// NewDebugClient preserves the old unscoped call shape but always fails closed.
+// Deprecated: use NewScopedDebugClient with an explicit identity scope.
 func NewDebugClient(apiKey string) (*DebugClient, error) {
+	if strings.TrimSpace(apiKey) == "" {
+		return nil, wrapAPIError(ErrorInvalidRequest, http.StatusBadRequest, "apiKey is required for debug client", "", false)
+	}
+	return nil, wrapAPIError(ErrorInvalidRequest, http.StatusBadRequest, "Debug identity scope is required", "", false)
+}
+
+// NewScopedDebugClient constructs a Debug client bound to one explicit target
+// identity scope. The scope is never inferred from the API key or imprint.
+func NewScopedDebugClient(apiKey, identityScope string) (*DebugClient, error) {
 	key := strings.TrimSpace(apiKey)
 	if key == "" {
-		return nil, &APIError{
-			Code:       ErrorInvalidRequest,
-			HTTPStatus: 400,
-			Message:    "apiKey is required for debug client",
-			Retryable:  false,
-		}
+		return nil, wrapAPIError(ErrorInvalidRequest, http.StatusBadRequest, "apiKey is required for debug client", "", false)
+	}
+	scope, err := validateIdentityScope(identityScope)
+	if err != nil {
+		return nil, err
 	}
 	base, err := newBaseClient(key)
 	if err != nil {
 		return nil, err
 	}
-	return &DebugClient{base: base}, nil
+	return &DebugClient{base: base, identityScope: scope}, nil
 }
 
 func (c *LiteClient) GetReport(ctx context.Context, imprint string) (map[string]any, error) {
@@ -149,7 +160,7 @@ func (c *LiteClient) GetReport(ctx context.Context, imprint string) (map[string]
 	if err != nil {
 		return nil, err
 	}
-	return c.base.getJSON(ctx, "/api/v1/fingerprint/report-lite/"+url.PathEscape(im))
+	return c.base.getJSON(ctx, getReportPath(url.PathEscape(im)))
 }
 
 func (c *ProClient) GetReport(ctx context.Context, imprint string) (map[string]any, error) {
@@ -157,7 +168,7 @@ func (c *ProClient) GetReport(ctx context.Context, imprint string) (map[string]a
 	if err != nil {
 		return nil, err
 	}
-	return c.base.getJSON(ctx, "/api/v1/fingerprint/report/"+url.PathEscape(im))
+	return c.base.getJSON(ctx, getReportPath(url.PathEscape(im)))
 }
 
 func (c *ProClient) GetReportWithOptions(ctx context.Context, imprint string, options ReportOptions) (map[string]any, error) {
@@ -165,7 +176,7 @@ func (c *ProClient) GetReportWithOptions(ctx context.Context, imprint string, op
 	if err != nil {
 		return nil, err
 	}
-	path := "/api/v1/fingerprint/report/" + url.PathEscape(im)
+	path := bindAccountAndGetReportPath(url.PathEscape(im))
 	if err := validateAccountRef(options.AccountRef); err != nil {
 		return nil, err
 	}
@@ -181,7 +192,7 @@ func (c *ProClient) GetHistory(ctx context.Context, imprint string, query Histor
 	if err != nil {
 		return nil, err
 	}
-	path := "/api/v1/fingerprint/imprint/" + url.PathEscape(im) + "/history" + queryString
+	path := getImprintHistoryPath(url.PathEscape(im)) + queryString
 	return c.base.getJSON(ctx, path)
 }
 
@@ -190,7 +201,7 @@ func (c *DebugClient) GetReport(ctx context.Context, imprint string) (map[string
 	if err != nil {
 		return nil, err
 	}
-	return c.base.getJSON(ctx, "/api/v1/internal/fingerprint/report/"+url.PathEscape(im))
+	return c.base.getJSON(ctx, internalDebugReportPath(url.PathEscape(im), c.identityScope))
 }
 
 func (c *DebugClient) GetDetails(ctx context.Context, imprint string) (map[string]any, error) {
@@ -198,7 +209,7 @@ func (c *DebugClient) GetDetails(ctx context.Context, imprint string) (map[strin
 	if err != nil {
 		return nil, err
 	}
-	return c.base.getJSON(ctx, "/api/v1/internal/fingerprint/details/"+url.PathEscape(im))
+	return c.base.getJSON(ctx, internalDebugDetailsPath(url.PathEscape(im), c.identityScope))
 }
 
 func newBaseClient(apiKey string) (*baseClient, error) {
@@ -361,6 +372,28 @@ func validateAccountRef(accountRef string) error {
 		}
 	}
 	return nil
+}
+
+func validateIdentityScope(raw string) (string, error) {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	prefix, identifier, ok := strings.Cut(value, ":")
+	if !ok || strings.Contains(identifier, ":") || identifier == "" || len(identifier) > 128 {
+		return "", wrapAPIError(ErrorInvalidRequest, http.StatusBadRequest, "Invalid identity scope", "", false)
+	}
+	if prefix == "site" {
+		if identifier != "echoscan" {
+			return "", wrapAPIError(ErrorInvalidRequest, http.StatusBadRequest, "Invalid identity scope", "", false)
+		}
+	} else if prefix != "workspace" && prefix != "internal" {
+		return "", wrapAPIError(ErrorInvalidRequest, http.StatusBadRequest, "Invalid identity scope", "", false)
+	}
+	for index, char := range identifier {
+		if char >= 'a' && char <= 'z' || char >= '0' && char <= '9' || index > 0 && (char == '-' || char == '_' || char == '.') {
+			continue
+		}
+		return "", wrapAPIError(ErrorInvalidRequest, http.StatusBadRequest, "Invalid identity scope", "", false)
+	}
+	return prefix + ":" + identifier, nil
 }
 
 func buildHistoryQuery(q HistoryQuery) (string, error) {
