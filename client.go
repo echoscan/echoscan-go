@@ -19,10 +19,7 @@ import (
 )
 
 const (
-	defaultBaseURL   = "https://api.echoscan.org"
-	defaultTimeoutMs = 5000
-	defaultRetries   = 2
-	sdkUserAgent     = "echoscan-go/0.1.0"
+	sdkUserAgent = "echoscan-go/0.1.0"
 )
 
 type ErrorCode string
@@ -318,14 +315,14 @@ func extractServerCode(payload map[string]any) string {
 }
 
 func buildRuntimeConfig() runtimeConfig {
-	baseURL := strings.TrimSpace(os.Getenv("ECHOSCAN_SERVER_BASE_URL"))
+	baseURL := strings.TrimSpace(os.Getenv(baseURLEnv))
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
 
-	timeoutMs := parseIntEnv("ECHOSCAN_SERVER_TIMEOUT_MS", defaultTimeoutMs)
-	retries := parseIntEnv("ECHOSCAN_SERVER_RETRIES", defaultRetries)
+	timeoutMs := parseIntEnv(timeoutMSEnv, defaultTimeoutMs)
+	retries := parseIntEnv(retriesEnv, defaultRetries)
 	if retries < 0 {
 		retries = defaultRetries
 	}
@@ -483,27 +480,6 @@ func isYYYYMMDD(s string) bool {
 	}
 	_, err := time.Parse("2006-01-02", s)
 	return err == nil
-}
-
-func mapStatusToCode(status int) ErrorCode {
-	switch status {
-	case 400:
-		return ErrorInvalidRequest
-	case 401:
-		return ErrorAuthFailed
-	case 403:
-		return ErrorForbidden
-	case 404:
-		return ErrorNotFound
-	case 408:
-		return ErrorTimeout
-	case 429:
-		return ErrorQuotaExceeded
-	case 500, 502, 503, 504:
-		return ErrorUpstreamUnavailable
-	default:
-		return ErrorUnknownError
-	}
 }
 
 func defaultMessage(code ErrorCode) string {

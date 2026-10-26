@@ -1,0 +1,12 @@
+{
+  "source_sha": "f90450bc7d12eaa506d076494c1cd1618cf0e1d2",
+  "files": {
+    "README.md": "606939e2251368e95a37e661ea9b68fe2f63264b04173f98ac65c81d969cd500",
+    "client.go": "9ccdd5d23cb28fbb0f0ee1c9e55e951f39bd568ba4b3626a71a32e39a2a3b172",
+    "client_test.go": "fdb81ba98c943fb7e294cef2c2f25e1b707ccee0e184254d02968ed52ba7a4a2",
+    "go.mod": "cfa1b0eb8329d010bab5dc231ab516aef1e17a0f3a78d5a957124dda25415c41",
+    "policy_generated.go": "1ca8c450dc99f8498c85acb9a6bd813939867464632a6711e1a7be1de6169273",
+    "routes_generated.go": "976411835601a2997b4f81a57bed735e44d0716873d8969228f80fdb505fef4b",
+    "testdata/identity-scope-examples.generated.json": "9957da9aafc962c0bd4c5dabd03075431a8c8fc86d9f85e2261ffc3c44c4d867"
+  }
+}

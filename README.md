@@ -9,10 +9,10 @@
 Go >=1.22。先在新客户目录运行 `go mod init example.com/echoscan-demo`，再安装。无第三方运行时依赖。
 
 ```bash
-go get github.com/echoscan/echoscan-go@v0.2.4
+go get github.com/echoscan/echoscan-go@v0.2.5
 ```
 
-本文安装示例固定为 0.2.4；下列客户端用法适用于该版本。
+本文安装示例固定为 0.2.5；下列客户端用法适用于该版本。
 
 仅在服务端安全配置 `ECHOSCAN_LITE_KEY`；以下 Imprint 是虚构占位符，真实请求须替换为 Browser Verifier 返回的 Imprint。示例只输出风险状态，不记录完整报告、IP、Imprint、账号关系或 Secret。
 
@@ -86,7 +86,7 @@ POST 返回生成响应时已提交且可见的关系；不预先包含尚未完
 
 ### 正式 Report 与 History 返回
 
-成功 JSON 由 SDK 透传。以下为生产者合法合成样例；Report 必有以下八个顶层字段，activity 与 account_map 可选。
+成功 JSON 由 SDK 透传。以下样例从公共合同的合成样例生成；完整字段、可选性、可空性和状态见文末自动生成的公共 API 参考。
 
 ```json
 {
@@ -117,10 +117,6 @@ POST 返回生成响应时已提交且可见的关系；不预先包含尚未完
 }
 ```
 
-`device.previous_seen_at` 必有且允许 null；`first_seen_at` 可缺失但不允许 null。browser／operating_system 的 name、version 可缺失。risk.reasons／findings 为固定数组，空数组有效；0、false 和空集合都是有效值，应保留。
-
-可选 `activity` 包含固定 `5m`、`1h`、`24h` 窗口，每个窗口含整数 events、distinct_ips、distinct_countries。可选 `account_map` 包含 account_seen_before、relationship_seen_before（布尔）及 accounts_on_device、devices_on_account、accounts_first_seen_on_device_1h（整数），不是原始账号列表。两者缺失时均不允许伪造为全 0。
-
 History 的合法空结果：
 
 ```json
@@ -140,13 +136,11 @@ History 的合法空结果：
 }
 ```
 
-History 使用原有字段命名：summary.firstSeenAt／lastSeenAt 可缺失；timeline 条目含 date／count；recent 条目必有 at，可选 surface／sourceType／sourceHost。缺失历史数据不补造时间或来源。
-
 字段权威：[开发者指南](https://echoscan.org/pages/developers/api-zh-CN.html)与[公开 OpenAPI 3.1](https://echoscan.org/openapi.json)，均可无需登录访问。Report 位于 `components.schemas["public.report.schema.json"]`，History 位于 `components.schemas["public.history.schema.json"]`。`getReport`／`bindAccountAndGetReport` 的 200 JSON 响应引用 Report；`getImprintHistory` 的 200 JSON 响应引用 History。
 
 ### 公开网络字段与 Geo 署名
 
-`network.status` 与 `ip_consistency` 固定存在；一致性为 UNKNOWN／MATCH／MISMATCH。observed_ip、alternate_ip、country_code、location、provider、connection_type、asn、proxy_detected 可缺失，均不允许 null；location 内 country_name、region、city、timezone 也可缺失。缺少 geo 不代表已知为空，也不要在 SDK 自行推算定位。proxy_detected=false 表示已知的否定，区别于缺失。
+缺失与 null 不同；保留 0、false 和空集合，不为缺失数据伪造值。字段定义见自动生成公共 API 参考。
 
 若产品对外展示 MaxMind GeoLite 数据，请保留署名：
 
@@ -154,32 +148,17 @@ History 使用原有字段命名：summary.firstSeenAt／lastSeenAt 可缺失；
 
 ### 配置、错误与重试
 
-| Environment | Default |
-| --- | --- |
-| `ECHOSCAN_SERVER_BASE_URL` | `https://api.echoscan.org` |
-| `ECHOSCAN_SERVER_TIMEOUT_MS` | `5000` |
-| `ECHOSCAN_SERVER_RETRIES` | `2` |
 
 环境变量在客户端创建时读取；Key 仍为构造参数，上述 ECHOSCAN_LITE_KEY／PRO_KEY 只是调用方示例用名，不是 SDK 自动选择权限。
 
-HTTP 错误体为 `{"error":{"code":"...","message":"..."}}`；SDK 将 HTTP 状态映射为归一化 code，原服务端 error.code 保留于下列细分码字段。比如 HTTP 409 account_ref_conflict 的 SDK code 是 unknown_error，不能把两者混为一谈。
+HTTP 错误体为 `{"error":{"code":"...","message":"..."}}`；SDK 按自动生成公共 API 参考中的映射归一化 code，并保留原服务端 error.code。
 
 `*APIError` 含 `Code`、`ServerCode`、`HTTPStatus`、`Message`、`RequestID`、`Retryable`；缺失细分码为 `""`。可用 `errors.As(err, &apiError)` 识别。
 
-| HTTP | SDK code |
-| --- | --- |
-| 400 | `invalid_request` |
-| 401 | `auth_failed` |
-| 403 | `forbidden` |
-| 404 | `not_found` |
-| 408 | `timeout` |
-| 429 | `quota_exceeded` |
-| 500 / 502 / 503 / 504 | `upstream_unavailable` |
-| Other / 其他 | `unknown_error` |
 
-当前 Go 环境解析只接受正整数，`ECHOSCAN_SERVER_RETRIES=0` 会回退到默认 2，不能通过此值关闭重试。每次 HTTP 请求超时，并同时受调用方 context 截止时间约束。
+当前 Go 环境解析只接受正整数，`ECHOSCAN_SERVER_RETRIES=0` 会回退到当前公共 API 参考列出的默认值，不能通过此值关闭重试。每次 HTTP 请求超时，并同时受调用方 context 截止时间约束。
 
-GET 默认最多 3 次尝试（首次＋2 次重试），在 HTTP 429、5xx 及捕获的网络失败时立即重试，没有退避或 Retry-After 等待。HTTP 408 不自动重试。网络错误归一化为 network_error 或 timeout。retryable 表示当前尝试还可自动重试；最终返回通常为 false，不证明问题永久不可恢复。
+GET 尝试次数由公共 API 参考中的默认重试次数及环境覆盖决定；在 HTTP 429、5xx 及捕获的网络失败时立即重试，没有退避或 Retry-After 等待。HTTP 408 不自动重试。网络错误归一化为 network_error 或 timeout。retryable 表示当前尝试还可自动重试；最终返回通常为 false，不证明问题永久不可恢复。
 
 每次重试是独立请求；重复 Report／History GET 会经过服务端用量与限流策略，不能假设缓存命中或重复读取免费。不要无限轮询。Account Map POST 只尝试一次；超时后先核实已有关系／快照，再决定是否重发，不能按 retryable 或 GET 策略无条件重放。
 
@@ -192,10 +171,10 @@ GET 默认最多 3 次尝试（首次＋2 次重试），在 HTTP 429、5xx 及�
 Go >=1.22. Run `go mod init example.com/echoscan-demo` in a new customer directory before installing. No third-party runtime dependencies.
 
 ```bash
-go get github.com/echoscan/echoscan-go@v0.2.4
+go get github.com/echoscan/echoscan-go@v0.2.5
 ```
 
-These installation examples pin version 0.2.4; the client usage below targets that release.
+These installation examples pin version 0.2.5; the client usage below targets that release.
 
 Configure `ECHOSCAN_LITE_KEY` securely on the server. The imprint below is a synthetic placeholder; for a real request replace it with the imprint returned by Browser Verifier. The example prints only risk status, without logging a full report, IP, imprint, account relationships or secrets.
 
@@ -269,7 +248,7 @@ POST reflects relationships committed and visible when the response is generated
 
 ### Canonical Report and History responses
 
-The SDK forwards successful JSON. These are valid synthetic producer examples. Report requires the eight top-level fields shown; activity and account_map are optional.
+The SDK forwards successful JSON. These examples are generated from the Public contract examples; the generated public API reference below lists fields, presence, nullability and states.
 
 ```json
 {
@@ -300,10 +279,6 @@ The SDK forwards successful JSON. These are valid synthetic producer examples. R
 }
 ```
 
-`device.previous_seen_at` is required and nullable; `first_seen_at` is optional and not nullable. Browser/operating-system name and version may be absent. risk.reasons/findings are required arrays; empty arrays are valid. Preserve 0, false and empty collections as valid values.
-
-Optional `activity` contains required `5m`, `1h`, `24h` windows, each with integer events, distinct_ips, distinct_countries. Optional `account_map` contains boolean account_seen_before, relationship_seen_before and integer accounts_on_device, devices_on_account, accounts_first_seen_on_device_1h, rather than raw account lists. Do not synthesize all-zero objects when either is absent.
-
 A valid empty History result:
 
 ```json
@@ -323,13 +298,11 @@ A valid empty History result:
 }
 ```
 
-History retains its field naming: summary.firstSeenAt/lastSeenAt are optional; timeline entries carry date/count; recent entries require at and may carry surface/sourceType/sourceHost. Do not fabricate timestamps or sources for unavailable history.
-
 Field authority: the [developer guide](https://echoscan.org/pages/developers/api-en-US.html) and [public OpenAPI 3.1](https://echoscan.org/openapi.json), both accessible without signing in. Report is at `components.schemas["public.report.schema.json"]`; History is at `components.schemas["public.history.schema.json"]`. The 200 JSON responses for `getReport` / `bindAccountAndGetReport` reference Report; the 200 JSON response for `getImprintHistory` references History.
 
 ### Public network fields and Geo attribution
 
-`network.status` and `ip_consistency` are required; consistency is UNKNOWN/MATCH/MISMATCH. observed_ip, alternate_ip, country_code, location, provider, connection_type, asn, proxy_detected are optional and non-nullable; location.country_name/region/city/timezone are also optional. Missing geo is unavailable data; do not calculate a location in the SDK. proxy_detected=false is a known negative, distinct from absence.
+Absence differs from null. Preserve 0, false and empty collections; do not fabricate missing values. See the generated public API reference for field definitions.
 
 When displaying MaxMind GeoLite data externally, retain attribution:
 
@@ -337,31 +310,161 @@ When displaying MaxMind GeoLite data externally, retain attribution:
 
 ### Configuration, errors and retries
 
-| Environment | Default |
-| --- | --- |
-| `ECHOSCAN_SERVER_BASE_URL` | `https://api.echoscan.org` |
-| `ECHOSCAN_SERVER_TIMEOUT_MS` | `5000` |
-| `ECHOSCAN_SERVER_RETRIES` | `2` |
 
 Environment variables are read when the client is created. The key remains a constructor argument; ECHOSCAN_LITE_KEY/PRO_KEY are caller example names, not automatic SDK permission selection.
 
-The HTTP error body is `{"error":{"code":"...","message":"..."}}`. SDK code is normalized from HTTP status, while the original error.code is retained in the server-code field below. For example HTTP 409 account_ref_conflict maps to SDK unknown_error; these are distinct codes.
+The HTTP error body is `{"error":{"code":"...","message":"..."}}`. SDK code is normalized using the generated public API reference mapping; the original server error.code is preserved separately.
 
 `*APIError` carries `Code`, `ServerCode`, `HTTPStatus`, `Message`, `RequestID`, `Retryable`; a missing server code is `""`. Identify it with `errors.As(err, &apiError)`.
 
-| HTTP | SDK code |
-| --- | --- |
-| 400 | `invalid_request` |
-| 401 | `auth_failed` |
-| 403 | `forbidden` |
-| 404 | `not_found` |
-| 408 | `timeout` |
-| 429 | `quota_exceeded` |
-| 500 / 502 / 503 / 504 | `upstream_unavailable` |
-| Other / 其他 | `unknown_error` |
 
 The current Go environment parser accepts only positive integers: `ECHOSCAN_SERVER_RETRIES=0` falls back to 2 and does not disable retries. The HTTP timeout applies per request, also bounded by the caller context deadline.
 
-GET defaults to at most 3 attempts (initial + 2 retries), retrying HTTP 429, 5xx and caught network failures immediately, without backoff or Retry-After waiting. HTTP 408 is not retried automatically. Network failures normalize to network_error or timeout. retryable reflects remaining automatic attempts; a final false value does not prove that a failure is permanent.
+GET attempt limits follow the generated public API reference defaults and environment overrides, retrying HTTP 429, 5xx and caught network failures immediately, without backoff or Retry-After waiting. HTTP 408 is not retried automatically. Network failures normalize to network_error or timeout. retryable reflects remaining automatic attempts; a final false value does not prove that a failure is permanent.
 
 Each retry is a separate request. Repeated Report/History GET requests pass through server usage and rate-limit policy; do not assume cached or repeated reads are free, and avoid unlimited polling. Account Map POST is attempted once; after a timeout, check the existing relationship/snapshot before deciding to resend, rather than unconditionally replaying it using GET policy or retryable.
+
+<!-- BEGIN GENERATED SDK REFERENCE -->
+## Generated public API reference / 自动生成公共 API 参考
+
+Generated from the producer's Public contracts and SDK policy. Regenerate with `contractcheck -mode generate`.
+
+本节从公共合同生成；字段的 required 表示其父对象存在时必需，optional 不代表允许 null。`UNAVAILABLE` 表示无法完成评估，不能当作 PASS。
+
+Required means required within its containing object; optional does not imply nullable. `UNAVAILABLE` means an assessment is unavailable, not PASS.
+
+Default base URL: `https://api.echoscan.org`; timeout: `5000 ms`; GET retries: `2`; POST retries: `0`.
+
+| Environment / 环境变量 | Default / 默认值 |
+| --- | --- |
+| `ECHOSCAN_SERVER_BASE_URL` | `https://api.echoscan.org` |
+| `ECHOSCAN_SERVER_TIMEOUT_MS` | 5000 |
+| `ECHOSCAN_SERVER_RETRIES` | 2 |
+
+| Operation | HTTP | Path |
+| --- | --- | --- |
+| `getReport` | `GET` | `/api/v1/fingerprint/report/{imprint}` |
+| `bindAccountAndGetReport` | `POST` | `/api/v1/fingerprint/report/{imprint}` |
+| `getImprintHistory` | `GET` | `/api/v1/fingerprint/imprint/{imprint}/history` |
+
+### Report fields / 字段
+
+| Field | Type | Presence | Values / description |
+| --- | --- | --- | --- |
+| `account_map` | object | optional |  |
+| `account_map.account_seen_before` | boolean | required |  |
+| `account_map.accounts_first_seen_on_device_1h` | integer | required |  |
+| `account_map.accounts_on_device` | integer | required |  |
+| `account_map.devices_on_account` | integer | required |  |
+| `account_map.relationship_seen_before` | boolean | required |  |
+| `activity` | object | optional |  |
+| `activity.1h` | object | required |  |
+| `activity.1h.distinct_countries` | integer | required |  |
+| `activity.1h.distinct_ips` | integer | required |  |
+| `activity.1h.events` | integer | required |  |
+| `activity.24h` | object | required |  |
+| `activity.24h.distinct_countries` | integer | required |  |
+| `activity.24h.distinct_ips` | integer | required |  |
+| `activity.24h.events` | integer | required |  |
+| `activity.5m` | object | required |  |
+| `activity.5m.distinct_countries` | integer | required |  |
+| `activity.5m.distinct_ips` | integer | required |  |
+| `activity.5m.events` | integer | required |  |
+| `browser` | object | required |  |
+| `browser.name` | string | optional |  |
+| `browser.status` | string | required | `PASS`; `SUSPICIOUS`; `DECEPTIVE` |
+| `browser.version` | string | optional |  |
+| `created_at` | string | required |  |
+| `device` | object | required |  |
+| `device.access_count` | integer | required |  |
+| `device.first_seen_at` | string | optional |  |
+| `device.id` | string | required |  |
+| `device.previous_seen_at` | string / null | required |  |
+| `device.seen_before` | boolean | required |  |
+| `imprint` | string | required |  |
+| `network` | object | required |  |
+| `network.alternate_ip` | string | optional |  |
+| `network.asn` | integer | optional |  |
+| `network.connection_type` | string | optional | `unknown`; `residential`; `corporate`; `mobile`; `hosting`; `proxy` |
+| `network.country_code` | string | optional |  |
+| `network.data_status` | string | optional | `COMPLETE`; `INCOMPLETE`; Observation completeness, separate from risk severity. Missing optional location metadata does not imply a network threat. |
+| `network.ip_consistency` | string | required | `UNKNOWN`; `MATCH`; `MISMATCH` |
+| `network.location` | object | optional |  |
+| `network.location.city` | string | optional |  |
+| `network.location.country_name` | string | optional |  |
+| `network.location.region` | string | optional |  |
+| `network.location.timezone` | string | optional |  |
+| `network.observed_ip` | string | optional |  |
+| `network.provider` | string | optional |  |
+| `network.proxy_detected` | boolean | optional |  |
+| `network.proxy_status` | string | optional | `PASS`; `SUSPICIOUS`; `DECEPTIVE`; `UNAVAILABLE`; Proxy-specific assessment. UNAVAILABLE means evidence is insufficient; other network findings do not by themselves identify a proxy. |
+| `network.status` | string | required | `PASS`; `SUSPICIOUS`; `DECEPTIVE`; `UNAVAILABLE` |
+| `operating_system` | object | required |  |
+| `operating_system.name` | string | optional |  |
+| `operating_system.status` | string | required | `PASS`; `SUSPICIOUS`; `DECEPTIVE` |
+| `operating_system.version` | string | optional |  |
+| `risk` | object | required |  |
+| `risk.data_status` | string | optional | `COMPLETE`; `INCOMPLETE`; Observation completeness, separate from risk severity. Missing optional location metadata does not imply a network threat. |
+| `risk.findings` | array of object | required |  |
+| `risk.findings[].reason` | string | required | `BROWSER_VERSION_MISMATCH`; `OS_ENVIRONMENT_MISMATCH`; `AUTOMATION_DETECTED`; `ENVIRONMENT_INCONSISTENT`; `PROXY_DETECTED`; `HOSTING_NETWORK_DETECTED`; `NETWORK_INCONSISTENT`; `LOCATION_INCONSISTENT`; `SIGNAL_DATA_INCOMPLETE` |
+| `risk.findings[].status` | string | required | `PASS`; `SUSPICIOUS`; `DECEPTIVE`; `UNAVAILABLE` |
+| `risk.reasons` | array of string | required | `BROWSER_VERSION_MISMATCH`; `OS_ENVIRONMENT_MISMATCH`; `AUTOMATION_DETECTED`; `ENVIRONMENT_INCONSISTENT`; `PROXY_DETECTED`; `HOSTING_NETWORK_DETECTED`; `NETWORK_INCONSISTENT`; `LOCATION_INCONSISTENT`; `SIGNAL_DATA_INCOMPLETE` |
+| `risk.status` | string | required | `PASS`; `SUSPICIOUS`; `DECEPTIVE`; `UNAVAILABLE` |
+| `schema_version` | string | required | const `1.0` |
+
+### History fields / 字段
+
+| Field | Type | Presence | Values / description |
+| --- | --- | --- | --- |
+| `imprint` | string | required |  |
+| `range` | object | required |  |
+| `range.days` | integer | required |  |
+| `range.from` | string | required |  |
+| `range.to` | string | required |  |
+| `recent` | array of object | required |  |
+| `recent[].at` | string | required |  |
+| `recent[].sourceHost` | string | optional |  |
+| `recent[].sourceType` | string | optional |  |
+| `recent[].surface` | string | required |  |
+| `summary` | object | required |  |
+| `summary.events` | integer | required |  |
+| `summary.firstSeenAt` | string | optional |  |
+| `summary.lastSeenAt` | string | optional |  |
+| `summary.truncated` | boolean | required |  |
+| `timeline` | array of object | required |  |
+| `timeline[].count` | integer | required |  |
+| `timeline[].date` | string | required |  |
+
+### Public HTTP errors / 公共 HTTP 错误
+
+SDK `code` is normalized from HTTP status; `serverCode` (Go `ServerCode`, Python/Rust `server_code`) preserves the original server code, including new codes.
+
+| Operation | HTTP | SDK code | Server codes |
+| --- | --- | --- | --- |
+| `getReport` | 400 | `invalid_request` | invalid_imprint |
+| `getReport` | 401 | `auth_failed` | missing_api_key, invalid_api_key |
+| `getReport` | 402 | `unknown_error` | machine_access_exhausted |
+| `getReport` | 403 | `forbidden` | ip_not_allowed, machine_capability_denied, machine_grant_invalid |
+| `getReport` | 404 | `not_found` | imprint_not_found |
+| `getReport` | 409 | `unknown_error` | test_reset_busy |
+| `getReport` | 410 | `unknown_error` | machine_grant_expired |
+| `getReport` | 429 | `quota_exceeded` | key_rate_limited, quota_exceeded, machine_request_limit_exceeded |
+| `getReport` | 500 | `upstream_unavailable` | auth_failed, identity_scope_unavailable, imprint_query_failed |
+| `getReport` | 503 | `upstream_unavailable` | auth_unavailable, report_dependency_unavailable, quota_state_unavailable |
+| `bindAccountAndGetReport` | 400 | `invalid_request` | invalid_imprint, invalid_account_ref |
+| `bindAccountAndGetReport` | 401 | `auth_failed` | missing_api_key, invalid_api_key |
+| `bindAccountAndGetReport` | 403 | `forbidden` | ip_not_allowed, machine_capability_denied |
+| `bindAccountAndGetReport` | 404 | `not_found` | imprint_not_found |
+| `bindAccountAndGetReport` | 409 | `unknown_error` | account_ref_conflict, account_map_device_unavailable, test_reset_busy |
+| `bindAccountAndGetReport` | 429 | `quota_exceeded` | key_rate_limited, quota_exceeded |
+| `bindAccountAndGetReport` | 500 | `upstream_unavailable` | auth_failed, identity_scope_unavailable, imprint_query_failed |
+| `bindAccountAndGetReport` | 503 | `upstream_unavailable` | account_map_dependency_unavailable, account_map_unavailable, auth_unavailable, report_dependency_unavailable, quota_state_unavailable |
+| `getImprintHistory` | 400 | `invalid_request` | invalid_history_query, invalid_imprint |
+| `getImprintHistory` | 401 | `auth_failed` | missing_api_key, invalid_api_key |
+| `getImprintHistory` | 403 | `forbidden` | ip_not_allowed, machine_capability_denied |
+| `getImprintHistory` | 404 | `not_found` | imprint_not_found |
+| `getImprintHistory` | 409 | `unknown_error` | device_history_unavailable, test_reset_busy |
+| `getImprintHistory` | 429 | `quota_exceeded` | key_rate_limited, quota_exceeded |
+| `getImprintHistory` | 500 | `upstream_unavailable` | auth_failed, history_query_failed, identity_scope_unavailable, visit_backend_unavailable |
+| `getImprintHistory` | 503 | `upstream_unavailable` | auth_unavailable, quota_state_unavailable |
+<!-- END GENERATED SDK REFERENCE -->
