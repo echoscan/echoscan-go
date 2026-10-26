@@ -318,7 +318,7 @@ The HTTP error body is `{"error":{"code":"...","message":"..."}}`. SDK code is n
 `*APIError` carries `Code`, `ServerCode`, `HTTPStatus`, `Message`, `RequestID`, `Retryable`; a missing server code is `""`. Identify it with `errors.As(err, &apiError)`.
 
 
-The current Go environment parser accepts only positive integers: `ECHOSCAN_SERVER_RETRIES=0` falls back to 2 and does not disable retries. The HTTP timeout applies per request, also bounded by the caller context deadline.
+The current Go environment parser accepts only positive integers: `ECHOSCAN_SERVER_RETRIES=0` falls back to the default listed in the generated public API reference and does not disable retries. The HTTP timeout applies per request, also bounded by the caller context deadline.
 
 GET attempt limits follow the generated public API reference defaults and environment overrides, retrying HTTP 429, 5xx and caught network failures immediately, without backoff or Retry-After waiting. HTTP 408 is not retried automatically. Network failures normalize to network_error or timeout. retryable reflects remaining automatic attempts; a final false value does not prove that a failure is permanent.
 
